@@ -29,6 +29,7 @@ npm install
 YOOMONEY_CLIENT_ID=твой_client_id
 YOOMONEY_CLIENT_SECRET=твой_client_secret
 YOOMONEY_REDIRECT_URI=http://localhost:3000/oauth/callback
+YOOMONEY_RECEIVER=твой_номер_счета
 PORT=3000
 ```
 
