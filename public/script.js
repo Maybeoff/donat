@@ -1,3 +1,20 @@
+// Темная тема
+function toggleTheme() {
+    document.body.classList.toggle('dark-theme');
+    const isDark = document.body.classList.contains('dark-theme');
+    localStorage.setItem('theme', isDark ? 'dark' : 'light');
+    
+    const btn = document.querySelector('.theme-toggle');
+    btn.textContent = isDark ? '☀️' : '🌙';
+}
+
+// Загрузка темы из localStorage
+if (localStorage.getItem('theme') === 'dark') {
+    document.body.classList.add('dark-theme');
+    const btn = document.querySelector('.theme-toggle');
+    if (btn) btn.textContent = '☀️';
+}
+
 // Проверка авторизации при загрузке
 async function checkAuth() {
     try {

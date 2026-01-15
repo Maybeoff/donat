@@ -1,7 +1,8 @@
 require('dotenv').config();
 const express = require('express');
 const axios = require('axios');
-const path = require('path');
+const { body, validationResult } = require('express-validator');
+const { paymentQueries, settingsQueries } = require('./db');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -9,11 +10,15 @@ const PORT = process.env.PORT || 3000;
 app.use(express.json());
 app.use(express.static('public'));
 
-// Хранилище платежей в памяти (пока сервер запущен)
-const payments = new Map();
+// Хранилище токена в БД
+let accessToken = null;
 
-// Хранилище токена в памяти
-let accessToken = process.env.YOOMONEY_TOKEN || null;
+// Загружаем токен из БД при старте
+const savedToken = settingsQueries.get.get('access_token');
+if (savedToken) {
+  accessToken = savedToken.value;
+  console.log('🔑 Токен загружен из БД');
+}
 
 // OAuth авторизация - шаг 1: перенаправление на YooMoney
 app.get('/oauth/authorize', (req, res) => {
@@ -60,7 +65,11 @@ app.get('/oauth/callback', async (req, res) => {
     );
     
     accessToken = response.data.access_token;
-    console.log('✅ Access token получен:', accessToken);
+    
+    // Сохраняем токен в БД
+    settingsQueries.set.run('access_token', accessToken);
+    
+    console.log('✅ Access token получен и сохранен в БД:', accessToken);
     
     res.send(`
       <html>
@@ -98,29 +107,44 @@ app.get('/api/auth-status', (req, res) => {
 
 // Удаление токена
 app.post('/api/revoke-token', (req, res) => {
-  accessToken = null;
-  console.log('🗑️ Токен удален');
-  res.json({ success: true });
+  try {
+    accessToken = null;
+    settingsQueries.set.run('access_token', '');
+    console.log('🗑️ Токен удален из БД');
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Ошибка удаления токена:', error);
+    res.status(500).json({ error: 'Ошибка удаления токена' });
+  }
 });
 
 // Очистка всех платежей
 app.post('/api/clear-payments', (req, res) => {
-  const count = payments.size;
-  payments.clear();
-  console.log(`🗑️ Удалено платежей: ${count}`);
-  res.json({ success: true, cleared: count });
+  try {
+    const result = paymentQueries.deleteAll.run();
+    console.log(`🗑️ Удалено платежей: ${result.changes}`);
+    res.json({ success: true, cleared: result.changes });
+  } catch (error) {
+    console.error('Ошибка очистки платежей:', error);
+    res.status(500).json({ error: 'Ошибка очистки платежей' });
+  }
 });
 
 // Удаление конкретного платежа
 app.delete('/api/payment/:orderId', (req, res) => {
-  const { orderId } = req.params;
-  
-  if (payments.has(orderId)) {
-    payments.delete(orderId);
-    console.log(`🗑️ Удален платеж: ${orderId}`);
-    res.json({ success: true });
-  } else {
-    res.status(404).json({ success: false, error: 'Платеж не найден' });
+  try {
+    const { orderId } = req.params;
+    const result = paymentQueries.delete.run(orderId);
+    
+    if (result.changes > 0) {
+      console.log(`🗑️ Удален платеж: ${orderId}`);
+      res.json({ success: true });
+    } else {
+      res.status(404).json({ success: false, error: 'Платеж не найден' });
+    }
+  } catch (error) {
+    console.error('Ошибка удаления платежа:', error);
+    res.status(500).json({ error: 'Ошибка удаления платежа' });
   }
 });
 
@@ -178,44 +202,65 @@ async function checkPaymentStatus(orderId) {
 
 // Автоматическая проверка всех pending платежей каждые 10 секунд
 setInterval(async () => {
-  for (const [orderId, payment] of payments.entries()) {
-    if (payment.status === 'pending') {
-      const operation = await checkPaymentStatus(orderId);
+  try {
+    const pendingPayments = paymentQueries.getPending.all();
+    
+    for (const payment of pendingPayments) {
+      const operation = await checkPaymentStatus(payment.orderId);
       
       if (operation) {
-        payment.status = 'success';
-        payment.paidAt = operation.datetime;
-        payment.actualAmount = operation.amount;
-        payment.sender = operation.title || 'Аноним';
-        console.log(`✅ Платеж подтвержден: ${orderId} - ${operation.amount} ₽`);
+        paymentQueries.updateStatus.run({
+          orderId: payment.orderId,
+          status: 'success',
+          paidAt: operation.datetime,
+          actualAmount: operation.amount,
+          sender: operation.title || 'Аноним'
+        });
+        console.log(`✅ Платеж подтвержден: ${payment.orderId} - ${operation.amount} ₽`);
       }
     }
+  } catch (error) {
+    console.error('❌ Ошибка проверки платежей:', error.message);
   }
 }, 10000);
 
-// Создание платежа
-app.post('/api/create-payment', (req, res) => {
+// Создание платежа с валидацией
+app.post('/api/create-payment', [
+  body('amount')
+    .isFloat({ min: 1, max: 100000 })
+    .withMessage('Сумма должна быть от 1 до 100000 рублей'),
+  body('message')
+    .optional()
+    .isLength({ max: 500 })
+    .withMessage('Сообщение не должно превышать 500 символов')
+    .trim()
+    .escape()
+], (req, res) => {
+  // Проверка валидации
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ 
+      error: 'Ошибка валидации', 
+      details: errors.array() 
+    });
+  }
+
   try {
-    const { amount, totalAmount, message } = req.body;
-    
-    if (!amount || amount <= 0) {
-      return res.status(400).json({ error: 'Некорректная сумма' });
-    }
+    const { amount, message = '' } = req.body;
+    const commission = amount * 0.03;
+    const totalAmount = amount + commission;
     
     // Генерируем уникальный ID заказа
     const orderId = `ORDER_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     
-    const commission = amount * 0.03;
-    
-    // Сохраняем информацию о платеже
-    payments.set(orderId, {
+    // Сохраняем в БД
+    paymentQueries.create.run({
       orderId,
       amount: parseFloat(amount),
       commission: parseFloat(commission.toFixed(2)),
       totalAmount: parseFloat(totalAmount.toFixed(2)),
-      message: message || '',
-      status: 'pending',
-      createdAt: new Date().toISOString()
+      message,
+      status: 'pending'
     });
     
     console.log('📝 Создан платеж:', orderId, `${amount} ₽ + ${commission.toFixed(2)} ₽ комиссия = ${totalAmount.toFixed(2)} ₽`);
@@ -235,16 +280,20 @@ app.post('/api/create-payment', (req, res) => {
 
 // Получение всех платежей
 app.get('/api/payments', (req, res) => {
-  const allPayments = Array.from(payments.values())
-    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-  res.json(allPayments);
+  try {
+    const allPayments = paymentQueries.getAll.all();
+    res.json(allPayments);
+  } catch (error) {
+    console.error('Ошибка получения платежей:', error);
+    res.status(500).json({ error: 'Ошибка получения платежей' });
+  }
 });
 
 // Проверка конкретного платежа
 app.get('/api/check-payment/:orderId', async (req, res) => {
   try {
     const { orderId } = req.params;
-    const payment = payments.get(orderId);
+    const payment = paymentQueries.getByOrderId.get(orderId);
     
     if (!payment) {
       return res.status(404).json({ error: 'Платеж не найден' });
@@ -255,10 +304,17 @@ app.get('/api/check-payment/:orderId', async (req, res) => {
       const operation = await checkPaymentStatus(orderId);
       
       if (operation) {
-        payment.status = 'success';
-        payment.paidAt = operation.datetime;
-        payment.actualAmount = operation.amount;
-        payment.sender = operation.title || 'Аноним';
+        paymentQueries.updateStatus.run({
+          orderId,
+          status: 'success',
+          paidAt: operation.datetime,
+          actualAmount: operation.amount,
+          sender: operation.title || 'Аноним'
+        });
+        
+        // Получаем обновленный платеж
+        const updatedPayment = paymentQueries.getByOrderId.get(orderId);
+        return res.json(updatedPayment);
       }
     }
     
