@@ -224,7 +224,8 @@ app.post('/api/create-payment', (req, res) => {
       success: true, 
       orderId,
       amount,
-      totalAmount 
+      totalAmount,
+      receiver: process.env.YOOMONEY_RECEIVER
     });
   } catch (error) {
     console.error('Ошибка при создании платежа:', error);

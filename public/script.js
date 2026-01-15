@@ -89,7 +89,7 @@ document.getElementById('donation-form').addEventListener('submit', async (e) =>
         form.action = 'https://yoomoney.ru/quickpay/confirm';
         
         const fields = {
-            receiver: '4100118362020711',
+            receiver: data.receiver,
             label: data.orderId,
             'quickpay-form': 'button',
             sum: totalAmount.toFixed(2)
