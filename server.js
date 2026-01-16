@@ -149,6 +149,65 @@ app.post('/api/clear-payments', (req, res) => {
   }
 });
 
+// Топ донатеров
+app.get('/api/top-donors', (req, res) => {
+  try {
+    const limit = parseInt(req.query.limit) || 10;
+    
+    const topDonors = db.prepare(`
+      SELECT 
+        sender,
+        COUNT(*) as count,
+        SUM(amount) as total
+      FROM payments
+      WHERE status = 'success' AND sender != ''
+      GROUP BY sender
+      ORDER BY total DESC
+      LIMIT ?
+    `).all(limit);
+    
+    res.json(topDonors);
+  } catch (error) {
+    console.error('Ошибка получения топа:', error);
+    res.status(500).json({ error: 'Ошибка получения топа' });
+  }
+});
+
+// Экспорт донатов в CSV
+app.get('/api/export/csv', (req, res) => {
+  try {
+    const payments = paymentQueries.getAll.all();
+    
+    // Заголовки CSV
+    let csv = 'ID,Сумма,Комиссия,Итого,Статус,Отправитель,Сообщение,Создан,Оплачен\n';
+    
+    // Данные
+    payments.forEach(p => {
+      csv += `"${p.orderId}",${p.amount},${p.commission},${p.totalAmount},"${p.status}","${p.sender || ''}","${(p.message || '').replace(/"/g, '""')}","${p.createdAt}","${p.paidAt || ''}"\n`;
+    });
+    
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="donations_${Date.now()}.csv"`);
+    res.send('\uFEFF' + csv); // BOM для правильной кодировки в Excel
+  } catch (error) {
+    console.error('Ошибка экспорта CSV:', error);
+    res.status(500).json({ error: 'Ошибка экспорта' });
+  }
+});
+
+// Экспорт донатов в JSON (для Excel через Power Query)
+app.get('/api/export/json', (req, res) => {
+  try {
+    const payments = paymentQueries.getAll.all();
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="donations_${Date.now()}.json"`);
+    res.json(payments);
+  } catch (error) {
+    console.error('Ошибка экспорта JSON:', error);
+    res.status(500).json({ error: 'Ошибка экспорта' });
+  }
+});
+
 // Удаление конкретного платежа
 app.delete('/api/payment/:orderId', (req, res) => {
   try {

@@ -34,8 +34,14 @@
         <div class="card">
             <h2>💾 Данные</h2>
             <div id="data-info">
-                <p>Платежи хранятся в памяти сервера</p>
-                <button onclick="clearPayments()" style="background: #ff9800;">🗑️ Очистить все платежи</button>
+                <p>Платежи хранятся в базе данных SQLite</p>
+                <div style="margin-top: 15px;">
+                    <button onclick="window.location.href='/api/export/csv'" style="background: #4caf50;">📊 Экспорт в CSV</button>
+                    <button onclick="window.location.href='/api/export/json'" style="background: #2196f3;">📄 Экспорт в JSON</button>
+                </div>
+                <div style="margin-top: 15px;">
+                    <button onclick="clearPayments()" style="background: #ff9800;">🗑️ Очистить все платежи</button>
+                </div>
             </div>
         </div>
 
