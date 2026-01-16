@@ -2,32 +2,32 @@
 
 set -e
 
-echo "🚀 Настройка Docker окружения для сайта доната"
-echo "================================================"
+echo "🚀 Автоматическая установка сайта доната"
+echo "=========================================="
 echo ""
+
+# Проверка прав root
+if [ "$EUID" -ne 0 ]; then 
+    echo "❌ Требуются права root. Запустите: sudo ./setup.sh"
+    exit 1
+fi
 
 # Функция установки Docker
 install_docker() {
     echo "📦 Установка Docker..."
-    
-    # Обновление пакетов
     apt-get update
     apt-get install -y ca-certificates curl gnupg lsb-release
     
-    # Добавление GPG ключа Docker
     mkdir -p /etc/apt/keyrings
     curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
     
-    # Добавление репозитория Docker
     echo \
       "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
       $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null
     
-    # Установка Docker
     apt-get update
     apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
     
-    # Запуск Docker
     systemctl start docker
     systemctl enable docker
     
@@ -37,47 +37,34 @@ install_docker() {
 # Проверка и установка Docker
 if ! command -v docker &> /dev/null; then
     echo "⚠️  Docker не найден. Устанавливаю..."
-    
-    # Проверка прав root
-    if [ "$EUID" -ne 0 ]; then 
-        echo "❌ Для установки Docker требуются права root. Запустите: sudo ./setup.sh"
-        exit 1
-    fi
-    
     install_docker
 else
     echo "✅ Docker уже установлен"
 fi
 
-# Проверка docker compose (новая версия - плагин)
-if ! docker compose version &> /dev/null; then
-    if ! command -v docker-compose &> /dev/null; then
-        echo "❌ Docker Compose не найден и не может быть установлен автоматически."
-        echo "Попробуйте переустановить Docker или установите docker-compose вручную."
-        exit 1
-    else
-        echo "✅ Используется docker-compose (старая версия)"
-        COMPOSE_CMD="docker-compose"
-    fi
-else
-    echo "✅ Docker Compose установлен"
+# Определение команды compose
+if docker compose version &> /dev/null; then
     COMPOSE_CMD="docker compose"
+else
+    COMPOSE_CMD="docker-compose"
 fi
 
-# Создание .env если не существует
-if [ ! -f .env ]; then
-    echo "📝 Создание файла .env..."
-    echo ""
-    
-    read -p "Введите домен (например, donat.example.com): " DOMAIN
-    read -p "Введите email для Let's Encrypt: " EMAIL
-    read -p "Введите YOOMONEY_CLIENT_ID: " YOOMONEY_CLIENT_ID
-    read -p "Введите YOOMONEY_CLIENT_SECRET: " YOOMONEY_CLIENT_SECRET
-    read -p "Введите YOOMONEY_RECEIVER (номер счета): " YOOMONEY_RECEIVER
-    
-    YOOMONEY_REDIRECT_URI="https://${DOMAIN}/oauth/callback"
-    
-    cat > .env << EOF
+echo "✅ Используется: $COMPOSE_CMD"
+echo ""
+
+# Запрос данных
+read -p "Введите домен (например, donat.example.com): " DOMAIN
+read -p "Введите email для Let's Encrypt: " EMAIL
+read -p "Введите YOOMONEY_CLIENT_ID: " YOOMONEY_CLIENT_ID
+read -p "Введите YOOMONEY_CLIENT_SECRET: " YOOMONEY_CLIENT_SECRET
+read -p "Введите YOOMONEY_RECEIVER (номер счета): " YOOMONEY_RECEIVER
+
+YOOMONEY_REDIRECT_URI="https://${DOMAIN}/oauth/callback"
+
+# Создание .env
+echo ""
+echo "📝 Создание .env файла..."
+cat > .env << EOF
 YOOMONEY_CLIENT_ID=${YOOMONEY_CLIENT_ID}
 YOOMONEY_CLIENT_SECRET=${YOOMONEY_CLIENT_SECRET}
 YOOMONEY_REDIRECT_URI=${YOOMONEY_REDIRECT_URI}
@@ -86,24 +73,31 @@ PORT=3000
 DOMAIN=${DOMAIN}
 EMAIL=${EMAIL}
 EOF
-    
-    echo "✅ Файл .env создан"
-else
-    echo "✅ Файл .env уже существует"
-    source .env
-fi
+
+echo "✅ .env создан"
 
 # Создание директорий
 echo ""
-echo "📁 Создание необходимых директорий..."
+echo "📁 Создание директорий..."
 mkdir -p certbot/conf certbot/www data
 
-# Создание nginx.conf из шаблона
+# Удаление лишних файлов
 echo ""
-echo "📝 Создание конфигурации nginx..."
-envsubst '${DOMAIN}' < nginx.conf.template > nginx.conf
+echo "🗑️  Удаление лишних файлов..."
+rm -rf vite public_old .git .gitignore TODO README.md README-DOCKER.md
 
-# Временный nginx конфиг для получения сертификата
+echo "✅ Лишние файлы удалены"
+
+# Сборка Docker образа
+echo ""
+echo "🔨 Сборка Docker образа..."
+docker build -t donat-app .
+
+echo "✅ Образ собран"
+
+# Временный nginx для получения сертификата
+echo ""
+echo "📝 Создание временной конфигурации nginx..."
 cat > nginx.conf << 'EOF'
 events {
     worker_connections 1024;
@@ -126,17 +120,16 @@ http {
 }
 EOF
 
-echo "✅ Временная конфигурация nginx создана"
-
 # Запуск nginx для получения сертификата
 echo ""
-echo "🔐 Получение SSL сертификата..."
+echo "🚀 Запуск nginx для получения сертификата..."
 $COMPOSE_CMD up -d nginx
 
-# Ожидание запуска nginx
 sleep 5
 
-# Получение сертификата
+# Получение SSL сертификата
+echo ""
+echo "🔐 Получение SSL сертификата..."
 $COMPOSE_CMD run --rm certbot certonly \
     --webroot \
     --webroot-path=/var/www/certbot \
@@ -145,21 +138,85 @@ $COMPOSE_CMD run --rm certbot certonly \
     --no-eff-email \
     -d ${DOMAIN}
 
-if [ $? -eq 0 ]; then
-    echo "✅ SSL сертификат успешно получен"
-else
+if [ $? -ne 0 ]; then
     echo "❌ Ошибка получения SSL сертификата"
+    echo "Проверьте что домен ${DOMAIN} указывает на этот сервер"
     exit 1
 fi
+
+echo "✅ SSL сертификат получен"
 
 # Создание финальной конфигурации nginx
 echo ""
 echo "📝 Создание финальной конфигурации nginx..."
-envsubst '${DOMAIN}' < nginx.conf.template > nginx.conf
+cat > nginx.conf << EOF
+events {
+    worker_connections 1024;
+}
 
-# Перезапуск с финальной конфигурацией
+http {
+    include /etc/nginx/mime.types;
+    default_type application/octet-stream;
+
+    upstream app {
+        server app:3000;
+    }
+
+    server {
+        listen 80;
+        server_name ${DOMAIN};
+
+        location /.well-known/acme-challenge/ {
+            root /var/www/certbot;
+        }
+
+        location / {
+            return 301 https://\$host\$request_uri;
+        }
+    }
+
+    server {
+        listen 443 ssl http2;
+        server_name ${DOMAIN};
+
+        ssl_certificate /etc/letsencrypt/live/${DOMAIN}/fullchain.pem;
+        ssl_certificate_key /etc/letsencrypt/live/${DOMAIN}/privkey.pem;
+
+        ssl_protocols TLSv1.2 TLSv1.3;
+        ssl_ciphers HIGH:!aNULL:!MD5;
+        ssl_prefer_server_ciphers on;
+
+        client_max_body_size 10M;
+
+        # Статика
+        location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ {
+            proxy_pass http://app;
+            proxy_cache_valid 200 1d;
+            add_header Cache-Control "public, immutable";
+        }
+
+        # API и динамические запросы
+        location / {
+            proxy_pass http://app;
+            proxy_http_version 1.1;
+            proxy_set_header Upgrade \$http_upgrade;
+            proxy_set_header Connection 'upgrade';
+            proxy_set_header Host \$host;
+            proxy_set_header X-Real-IP \$remote_addr;
+            proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto \$scheme;
+            proxy_cache_bypass \$http_upgrade;
+            proxy_read_timeout 300;
+            proxy_connect_timeout 300;
+            proxy_send_timeout 300;
+        }
+    }
+}
+EOF
+
+# Перезапуск всех контейнеров
 echo ""
-echo "🔄 Перезапуск контейнеров..."
+echo "🔄 Запуск всех контейнеров..."
 $COMPOSE_CMD down
 $COMPOSE_CMD up -d
 
@@ -169,13 +226,14 @@ echo ""
 echo "📊 Статус контейнеров:"
 $COMPOSE_CMD ps
 echo ""
-echo "🌐 Сайт доступен по адресу: https://${DOMAIN}"
+echo "🌐 Сайт доступен: https://${DOMAIN}"
 echo "⚙️  Настройки: https://${DOMAIN}/settings.html"
 echo "🏆 Топ донатеров: https://${DOMAIN}/top.html"
 echo ""
 echo "📝 Полезные команды:"
-echo "  $COMPOSE_CMD logs -f          # Просмотр логов"
+echo "  $COMPOSE_CMD logs -f app      # Логи приложения"
+echo "  $COMPOSE_CMD logs -f nginx    # Логи nginx"
 echo "  $COMPOSE_CMD restart          # Перезапуск"
 echo "  $COMPOSE_CMD down             # Остановка"
-echo "  $COMPOSE_CMD up -d            # Запуск"
 echo ""
+
