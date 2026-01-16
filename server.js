@@ -60,7 +60,8 @@ app.get('/oauth/callback', async (req, res) => {
       {
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded'
-        }
+        },
+        timeout: 30000 // 30 секунд таймаут
       }
     );
     
@@ -93,7 +94,25 @@ app.get('/oauth/callback', async (req, res) => {
     `);
   } catch (error) {
     console.error('❌ Ошибка получения токена:', error.response?.data || error.message);
-    res.send(`Ошибка получения токена: ${error.response?.data?.error || error.message}`);
+    res.send(`
+      <html>
+        <head>
+          <meta charset="UTF-8">
+          <style>
+            body { font-family: Arial; padding: 50px; text-align: center; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; }
+            .error { background: white; color: #c33; padding: 30px; border-radius: 15px; max-width: 500px; margin: 0 auto; }
+            button { background: #667eea; color: white; border: none; padding: 12px 24px; border-radius: 8px; cursor: pointer; font-size: 16px; margin-top: 20px; }
+          </style>
+        </head>
+        <body>
+          <div class="error">
+            <h1>❌ Ошибка авторизации</h1>
+            <p>${error.response?.data?.error || error.message}</p>
+            <button onclick="window.location.href='/settings.html'">Попробовать снова</button>
+          </div>
+        </body>
+      </html>
+    `);
   }
 });
 
