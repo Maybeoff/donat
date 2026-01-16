@@ -118,6 +118,7 @@ http {
 
         location /.well-known/acme-challenge/ {
             root /var/www/certbot;
+            default_type text/plain;
         }
 
         location / {
