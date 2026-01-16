@@ -1,0 +1,15 @@
+node_modules
+npm-debug.log
+.git
+.gitignore
+.env
+README.md
+TODO
+.vscode
+vite
+public_old
+donat.db
+data
+certbot
+*.md
+.DS_Store
