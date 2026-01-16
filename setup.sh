@@ -6,15 +6,62 @@ echo "🚀 Настройка Docker окружения для сайта дон
 echo "================================================"
 echo ""
 
-# Проверка наличия Docker
+# Функция установки Docker
+install_docker() {
+    echo "📦 Установка Docker..."
+    
+    # Обновление пакетов
+    apt-get update
+    apt-get install -y ca-certificates curl gnupg lsb-release
+    
+    # Добавление GPG ключа Docker
+    mkdir -p /etc/apt/keyrings
+    curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+    
+    # Добавление репозитория Docker
+    echo \
+      "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
+      $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null
+    
+    # Установка Docker
+    apt-get update
+    apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+    
+    # Запуск Docker
+    systemctl start docker
+    systemctl enable docker
+    
+    echo "✅ Docker установлен"
+}
+
+# Проверка и установка Docker
 if ! command -v docker &> /dev/null; then
-    echo "❌ Docker не установлен. Установите Docker и попробуйте снова."
-    exit 1
+    echo "⚠️  Docker не найден. Устанавливаю..."
+    
+    # Проверка прав root
+    if [ "$EUID" -ne 0 ]; then 
+        echo "❌ Для установки Docker требуются права root. Запустите: sudo ./setup.sh"
+        exit 1
+    fi
+    
+    install_docker
+else
+    echo "✅ Docker уже установлен"
 fi
 
-if ! command -v docker-compose &> /dev/null; then
-    echo "❌ Docker Compose не установлен. Установите Docker Compose и попробуйте снова."
-    exit 1
+# Проверка docker compose (новая версия - плагин)
+if ! docker compose version &> /dev/null; then
+    if ! command -v docker-compose &> /dev/null; then
+        echo "❌ Docker Compose не найден и не может быть установлен автоматически."
+        echo "Попробуйте переустановить Docker или установите docker-compose вручную."
+        exit 1
+    else
+        echo "✅ Используется docker-compose (старая версия)"
+        COMPOSE_CMD="docker-compose"
+    fi
+else
+    echo "✅ Docker Compose установлен"
+    COMPOSE_CMD="docker compose"
 fi
 
 # Создание .env если не существует
@@ -84,13 +131,13 @@ echo "✅ Временная конфигурация nginx создана"
 # Запуск nginx для получения сертификата
 echo ""
 echo "🔐 Получение SSL сертификата..."
-docker-compose up -d nginx
+$COMPOSE_CMD up -d nginx
 
 # Ожидание запуска nginx
 sleep 5
 
 # Получение сертификата
-docker-compose run --rm certbot certonly \
+$COMPOSE_CMD run --rm certbot certonly \
     --webroot \
     --webroot-path=/var/www/certbot \
     --email ${EMAIL} \
@@ -113,22 +160,22 @@ envsubst '${DOMAIN}' < nginx.conf.template > nginx.conf
 # Перезапуск с финальной конфигурацией
 echo ""
 echo "🔄 Перезапуск контейнеров..."
-docker-compose down
-docker-compose up -d
+$COMPOSE_CMD down
+$COMPOSE_CMD up -d
 
 echo ""
 echo "✅ Установка завершена!"
 echo ""
 echo "📊 Статус контейнеров:"
-docker-compose ps
+$COMPOSE_CMD ps
 echo ""
 echo "🌐 Сайт доступен по адресу: https://${DOMAIN}"
 echo "⚙️  Настройки: https://${DOMAIN}/settings.html"
 echo "🏆 Топ донатеров: https://${DOMAIN}/top.html"
 echo ""
 echo "📝 Полезные команды:"
-echo "  docker-compose logs -f          # Просмотр логов"
-echo "  docker-compose restart          # Перезапуск"
-echo "  docker-compose down             # Остановка"
-echo "  docker-compose up -d            # Запуск"
+echo "  $COMPOSE_CMD logs -f          # Просмотр логов"
+echo "  $COMPOSE_CMD restart          # Перезапуск"
+echo "  $COMPOSE_CMD down             # Остановка"
+echo "  $COMPOSE_CMD up -d            # Запуск"
 echo ""
