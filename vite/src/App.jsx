@@ -120,6 +120,16 @@ function App() {
           </button>
         </div>
 
+        {/* Навигация */}
+        <div className="flex gap-3 mb-6 justify-center">
+          <a 
+            href="/top.html"
+            className="bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-600 hover:to-orange-600 text-white py-3 px-6 rounded-xl transition-all flex items-center gap-2 shadow-lg"
+          >
+            🏆 Топ донатеров
+          </a>
+        </div>
+
         {/* Форма доната */}
         <div className={`rounded-2xl p-6 mb-6 backdrop-blur-sm shadow-2xl ${
           darkTheme ? 'bg-slate-800/80' : 'bg-white/90'

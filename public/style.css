@@ -194,6 +194,58 @@ button:hover {
     margin: 5px 0;
 }
 
+.donor-item {
+    display: flex;
+    align-items: center;
+    padding: 15px;
+    margin: 10px 0;
+    background: #f5f5f5;
+    border-radius: 8px;
+    border-left: 4px solid #667eea;
+    transition: all 0.3s;
+}
+
+.donor-item:hover {
+    transform: translateX(5px);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.donor-item.top-rank {
+    background: linear-gradient(135deg, #fff8e1 0%, #ffe082 100%);
+    border-left-color: #ffa000;
+}
+
+.donor-rank {
+    font-size: 2em;
+    margin-right: 20px;
+    min-width: 50px;
+    text-align: center;
+}
+
+.donor-info {
+    flex: 1;
+}
+
+.donor-name {
+    font-size: 1.2em;
+    font-weight: bold;
+    color: #333;
+    margin-bottom: 5px;
+}
+
+.donor-stats {
+    display: flex;
+    gap: 20px;
+    color: #666;
+    font-size: 0.9em;
+}
+
+.donor-amount {
+    color: #667eea;
+    font-weight: bold;
+    font-size: 1.1em;
+}
+
 .info-item {
     padding: 10px 0;
     border-bottom: 1px solid #eee;
