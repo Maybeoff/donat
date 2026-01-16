@@ -138,17 +138,19 @@ sleep 5
 # Получение SSL сертификата
 echo ""
 echo "🔐 Получение SSL сертификата..."
-$COMPOSE_CMD run --rm certbot certonly \
+$COMPOSE_CMD run --rm --entrypoint certbot certbot certonly \
     --webroot \
     --webroot-path=/var/www/certbot \
     --email ${EMAIL} \
     --agree-tos \
     --no-eff-email \
+    --non-interactive \
     -d ${DOMAIN}
 
 if [ $? -ne 0 ]; then
     echo "❌ Ошибка получения SSL сертификата"
     echo "Проверьте что домен ${DOMAIN} указывает на этот сервер"
+    $COMPOSE_CMD down
     exit 1
 fi
 
