@@ -1,6 +1,9 @@
-FROM node:18-alpine
+FROM node:20-alpine
 
 WORKDIR /app
+
+# Установка зависимостей для сборки native модулей
+RUN apk add --no-cache python3 make g++
 
 # Копируем package файлы
 COPY package*.json ./
