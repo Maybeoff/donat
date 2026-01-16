@@ -2,9 +2,16 @@
 async function loadTopDonors() {
     try {
         const response = await fetch('/api/top-donors');
-        const donors = await response.json();
+        const data = await response.json();
         
         const container = document.getElementById('top-donors');
+        
+        if (data.error) {
+            container.innerHTML = `<div class="error">${data.error}</div>`;
+            return;
+        }
+        
+        const donors = Array.isArray(data) ? data : [];
         
         if (donors.length === 0) {
             container.innerHTML = '<p>Донатов пока нет</p>';

@@ -128,16 +128,6 @@ function App() {
           >
             🏆 Топ донатеров
           </a>
-          <a 
-            href="/settings.html"
-            className={`py-3 px-6 rounded-xl transition-all flex items-center gap-2 ${
-              darkTheme 
-                ? 'bg-slate-700 hover:bg-slate-600 text-gray-300' 
-                : 'bg-white/50 hover:bg-white/70 text-gray-700'
-            }`}
-          >
-            ⚙️ Настройки
-          </a>
         </div>
 
         {/* Форма доната */}

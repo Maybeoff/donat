@@ -153,6 +153,7 @@ app.post('/api/clear-payments', (req, res) => {
 app.get('/api/top-donors', (req, res) => {
   try {
     const limit = parseInt(req.query.limit) || 10;
+    const { db } = require('./db');
     
     const topDonors = db.prepare(`
       SELECT 
